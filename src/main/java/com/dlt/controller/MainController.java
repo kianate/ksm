@@ -297,6 +297,32 @@ public class MainController {
     }
 
     /**
+     * 显示定时对话气泡（自定义时长后自动消失）
+     */
+    private void showTimedBubble(String message, int durationMs) {
+        if (currentBubble != null) {
+            currentBubble.dispose();
+        }
+
+        Point petLoc = petWindow.getLocation();
+        int centerX = petLoc.x + petWidth / 2;
+        int topY = petLoc.y;
+
+        ChatBubble bubble = new ChatBubble(petWindow, message);
+        currentBubble = bubble;
+        bubble.showAt(centerX, topY);
+
+        Timer timer = new Timer(durationMs, e -> {
+            bubble.dispose();
+            if (currentBubble == bubble) {
+                currentBubble = null;
+            }
+        });
+        timer.setRepeats(false);
+        timer.start();
+    }
+
+    /**
      * 切换宠物显示/隐藏
      */
     private void togglePetVisibility() {
@@ -545,7 +571,7 @@ public class MainController {
 
             SwingUtilities.invokeLater(() -> {
                 if (result != null && !result.isEmpty()) {
-                    showPersistentBubble(result);
+                    showTimedBubble(result, 3000);
                 } else {
                     showTimedBubble("翻译失败了诶...");
                 }
