@@ -25,7 +25,6 @@ public class ChatBubble {
 
     // 显示模式窗口
     private JWindow displayWindow;
-
     // 输入模式对话框,用JDialog
     private JDialog inputDialog;
     // 输入框,用JTextField
@@ -146,7 +145,8 @@ public class ChatBubble {
         inputDialog.setUndecorated(true);
         inputDialog.setAlwaysOnTop(true);
         inputDialog.setFocusableWindowState(true);
-        inputDialog.setBackground(new Color(0, 0, 0, 0));
+        // 不使用透明背景，避免IME输入法兼容性问题
+        inputDialog.setBackground(Color.WHITE);
         inputDialog.setSize(maxWidth, 44);
 
         // 主面板 - 简单白色背景 + 灰色边框
@@ -158,14 +158,10 @@ public class ChatBubble {
                 int w = getWidth();
                 int h = getHeight();
 
-                // 清除像素（防止IME重绘残留）
-                g2d.setComposite(AlphaComposite.Clear);
-                g2d.fillRect(0, 0, w, h);
-
-                g2d.setComposite(AlphaComposite.SrcOver);
-                // 白色背景
+                // 完全填充白色背景（防止IME重绘残留）
                 g2d.setColor(Color.WHITE);
                 g2d.fillRect(0, 0, w, h);
+                
                 // 灰色边框
                 g2d.setColor(Color.GRAY);
                 g2d.setStroke(new BasicStroke(1.0f));
@@ -174,7 +170,8 @@ public class ChatBubble {
                 g2d.dispose();
             }
         };
-        panel.setOpaque(false);
+        panel.setOpaque(true); // 改为不透明，避免IME问题
+        panel.setBackground(Color.WHITE); // 设置明确背景色
         panel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
 
         // 简单输入框
@@ -197,8 +194,8 @@ public class ChatBubble {
         };
         inputField.setFont(font);
         inputField.setForeground(Color.BLACK);
-        inputField.setOpaque(false);
-        inputField.setBackground(new Color(0, 0, 0, 0));
+        inputField.setOpaque(true); // 改为不透明
+        inputField.setBackground(Color.WHITE); // 明确设置白色背景
         inputField.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
 
         // 按回车提交
