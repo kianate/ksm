@@ -10,6 +10,11 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
+import com.dlt.service.TranslateService;
+
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
 import java.util.concurrent.CompletableFuture;
 
 public class MainController {
@@ -39,6 +44,8 @@ public class MainController {
     private String apiKey;
     // 自言自语服务
     private IdleChatService idleChatService;
+    // 翻译服务
+    private TranslateService translateService;
     // 全局鼠标钩子
     private GlobalMouseHook mouseHook;
     // 跳跃动画相关
@@ -50,6 +57,7 @@ public class MainController {
     public MainController() {
         //initApiKey();
         apiKey = "sk-9ebdc142aef749e296e6a6beef33c4d4";
+        translateService = new TranslateService();
         aiService = new AliyunBailianService(apiKey);
 
         initPetWindow();
@@ -306,12 +314,17 @@ public class MainController {
     private void initMouseHook() {
         mouseHook = new GlobalMouseHook(button -> {
             SwingUtilities.invokeLater(() -> {
-                if (petVisible) {
-                    showInputDialog();
-                }
-                else{
-                    togglePetVisibility();
-                    showInputDialog();
+                if (button == 4) { // 后退侧键 → 翻译选中文本
+                    if (petVisible) {
+                        handleTranslateSelection();
+                    }
+                } else if (button == 5) { // 前进侧键 → 触发对话
+                    if (petVisible) {
+                        showInputDialog();
+                    } else {
+                        togglePetVisibility();
+                        showInputDialog();
+                    }
                 }
             });
         });
@@ -472,6 +485,72 @@ public class MainController {
         }
         petWindow.dispose();
         System.exit(0);
+    }
+
+    /**
+     * 获取当前系统选中的文本
+     * 通过模拟 Ctrl+C 复制并读取剪贴板实现
+     */
+    private String getSelectedText() {
+        try {
+            // 保存当前剪贴板内容
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            Transferable oldContent = clipboard.getContents(null);
+
+            // 模拟 Ctrl+C
+            Robot robot = new Robot();
+            robot.keyPress(KeyEvent.VK_CONTROL);
+            robot.keyPress(KeyEvent.VK_C);
+            robot.keyRelease(KeyEvent.VK_C);
+            robot.keyRelease(KeyEvent.VK_CONTROL);
+
+            // 等待复制完成
+            Thread.sleep(150);
+
+            // 读取剪贴板
+            String selectedText = (String) clipboard.getData(DataFlavor.stringFlavor);
+
+            // 恢复原剪贴板内容
+            if (oldContent != null) {
+                clipboard.setContents(oldContent, null);
+            }
+
+            return selectedText;
+        } catch (Exception e) {
+            System.err.println("获取选中文本失败: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 处理翻译选中文本
+     * 在 Windows 上，没有直接的 Java API 可以获取其他应用程序中选中的文本。
+     * 所有应用（包括浏览器、编辑器等）都不会把"当前选中文本"暴露给外部程序，
+     * 唯一的通用途径就是通过剪贴板（模拟 Ctrl+C）。
+     */
+    private void handleTranslateSelection() {
+        showTimedBubble("翻译中...");
+
+        // 在EDT上获取选中文本（Robot模拟Ctrl+C需要在EDT执行）
+        final String selectedText = getSelectedText();
+        if (selectedText == null || selectedText.trim().isEmpty()) {
+            showTimedBubble("没有选中文本哦~");
+            return;
+        }
+
+        // 异步调用翻译API
+        CompletableFuture.runAsync(() -> {
+            String targetLang = "zh-CN";
+            String result = translateService.translate(selectedText.trim(), targetLang);
+
+            SwingUtilities.invokeLater(() -> {
+                if (result != null && !result.isEmpty()) {
+                    showPersistentBubble(result);
+                } else {
+                    showTimedBubble("翻译失败了诶...");
+                }
+            });
+        });
     }
 
     /**
