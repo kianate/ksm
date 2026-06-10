@@ -49,6 +49,11 @@ public class AliyunBailianService {
         + "- 示例2：唔...ars酱你不要生气嘛~|||*悄悄凑过去拉有咲的衣角，眨巴着大眼睛*\n"
         + "- 示例3：这首歌最棒了！让人doki doki呢！|||*兴奋地跳起来，拿起吉他*\n"
         + "- 第二部分必须有，每次回复都要有动作或心理描写";
+
+    /** 对话用的系统提示词（普通AI助手，无人物性格，100字限制） */
+    private static final String CHAT_SYSTEM_PROMPT =
+        "你是一个智能助手，请直接回答用户的问题。\n"
+        + "将回复内容严格限制在100字以内，小于100字不修改，高于100字做精简。";
     
     private final String apiKey;
     private final OkHttpClient httpClient;
@@ -58,6 +63,64 @@ public class AliyunBailianService {
         this.httpClient = new OkHttpClient();
     }
     
+    /**
+     * 获取系统提示词（供外部复用性格设定）
+     */
+    public String getSystemPrompt() {
+        return SYSTEM_PROMPT;
+    }
+
+    /**
+     * 使用自定义系统提示词进行对话
+     * @param systemPrompt 自定义系统提示词
+     * @param userMessage 用户消息
+     * @return AI回复内容
+     */
+    public String chatWithPrompt(String systemPrompt, String userMessage) throws IOException {
+        JsonObject requestBody = new JsonObject();
+        requestBody.addProperty("model", "qwen-plus");
+
+        JsonObject input = new JsonObject();
+        JsonArray messages = new JsonArray();
+
+        JsonObject systemMsg = new JsonObject();
+        systemMsg.addProperty("role", "system");
+        systemMsg.addProperty("content", systemPrompt);
+        messages.add(systemMsg);
+
+        JsonObject userMsg = new JsonObject();
+        userMsg.addProperty("role", "user");
+        userMsg.addProperty("content", userMessage);
+        messages.add(userMsg);
+
+        input.add("messages", messages);
+        requestBody.add("input", input);
+
+        JsonObject parameters = new JsonObject();
+        parameters.addProperty("result_format", "message");
+        requestBody.add("parameters", parameters);
+
+        RequestBody body = RequestBody.create(
+            requestBody.toString(),
+            MediaType.parse("application/json; charset=utf-8")
+        );
+
+        Request request = new Request.Builder()
+            .url(API_URL)
+            .post(body)
+            .addHeader("Authorization", "Bearer " + apiKey)
+            .addHeader("Content-Type", "application/json")
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("API请求失败: " + response.code());
+            }
+            String responseBody = response.body().string();
+            return parseResponse(responseBody);
+        }
+    }
+
     /**
      * 异步调用大模型API
      * @param userMessage 用户消息
@@ -91,7 +154,7 @@ public class AliyunBailianService {
         // 系统提示
         JsonObject systemMsg = new JsonObject();
         systemMsg.addProperty("role", "system");
-        systemMsg.addProperty("content", SYSTEM_PROMPT);
+        systemMsg.addProperty("content", CHAT_SYSTEM_PROMPT);
         messages.add(systemMsg);
         
         // 用户消息

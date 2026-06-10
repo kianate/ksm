@@ -3,6 +3,7 @@ package com.dlt.controller;
 import com.dlt.component.ChatBubble;
 import com.dlt.component.GlobalMouseHook;
 import com.dlt.service.AliyunBailianService;
+import com.dlt.service.IdleChatService;
 
 import javax.swing.*;
 import java.awt.*;
@@ -36,6 +37,8 @@ public class MainController {
     // AI服务
     private AliyunBailianService aiService;
     private String apiKey;
+    // 自言自语服务
+    private IdleChatService idleChatService;
     // 全局鼠标钩子
     private GlobalMouseHook mouseHook;
     // 跳跃动画相关
@@ -52,6 +55,22 @@ public class MainController {
         initPetWindow();
         initMouseHook();
         initSystemTray();
+        initIdleChat();
+    }
+
+    /**
+     * 初始化自言自语功能
+     * 宠物无聊时会随机自言自语或找人互动，内容由AI生成
+     */
+    private void initIdleChat() {
+        idleChatService = new IdleChatService(aiService, message -> {
+            SwingUtilities.invokeLater(() -> {
+                if (petVisible) {
+                    showDisplayBubble(message);
+                }
+            });
+        });
+        idleChatService.start();
     }
 
     /**
@@ -421,6 +440,9 @@ public class MainController {
      * 退出应用
      */
     private void exitApp() {
+        if (idleChatService != null) {
+            idleChatService.stop();
+        }
         if (mouseHook != null) {
             mouseHook.uninstall();
         }
