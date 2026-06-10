@@ -66,7 +66,7 @@ public class MainController {
         idleChatService = new IdleChatService(aiService, message -> {
             SwingUtilities.invokeLater(() -> {
                 if (petVisible) {
-                    showDisplayBubble(message);
+                    showTimedBubble(message);
                 }
             });
         });
@@ -173,7 +173,7 @@ public class MainController {
         if (!petVisible) return;
         int index = (int) (Math.random() * greetings.length);
         String greeting = greetings[index];
-        showDisplayBubble(greeting);
+        showTimedBubble(greeting);
 
         // 异步调用AI获取回复
         CompletableFuture<String> future = aiService.chatAsync(greeting);
@@ -182,7 +182,7 @@ public class MainController {
                 // 解析回复：||| 前是显示内容
                 String displayText = parseDisplayText(reply);
                 if (displayText != null && !displayText.isEmpty()) {
-                    showDisplayBubble(displayText);
+                    showTimedBubble(displayText);
                 }
             });
         });
@@ -216,15 +216,15 @@ public class MainController {
      * 处理用户输入的消息
      */
     private void handleUserMessage(String message) {
-        // 先显示用户消息的确认
-        showDisplayBubble("em..em...");
+        // 先显示思考中的提示（短暂自动消失）
+        showTimedBubble("思考中...");
         // 异步调用AI
         CompletableFuture<String> future = aiService.chatAsync(message);
         future.thenAccept(reply -> {
             SwingUtilities.invokeLater(() -> {
                 String displayText = parseDisplayText(reply);
                 if (displayText != null && !displayText.isEmpty()) {
-                    showDisplayBubble(displayText);
+                    showPersistentBubble(displayText);
                 } else {
                     currentBubble.dispose();
                 }
@@ -244,9 +244,27 @@ public class MainController {
     }
 
     /**
-     * 显示对话气泡
+     * 显示持久对话气泡（AI回复，不自动消失，仅通过X按钮或下次输入时关闭）
      */
-    private void showDisplayBubble(String message) {
+    private void showPersistentBubble(String message) {
+        if (currentBubble != null) {
+            currentBubble.dispose();
+        }
+
+        Point petLoc = petWindow.getLocation();
+        int centerX = petLoc.x + petWidth / 2;
+        int topY = petLoc.y;
+
+        ChatBubble bubble = new ChatBubble(petWindow, message);
+        currentBubble = bubble;
+        bubble.showAt(centerX, topY);
+        // 不设置自动消失计时器，由X按钮或下次触发输入框时关闭
+    }
+
+    /**
+     * 显示定时对话气泡（自言自语，5秒后自动消失）
+     */
+    private void showTimedBubble(String message) {
         if (currentBubble != null) {
             currentBubble.dispose();
         }
@@ -259,8 +277,8 @@ public class MainController {
         currentBubble = bubble;
         bubble.showAt(centerX, topY);
 
-        // 3秒后自动消失
-        Timer timer = new Timer(3000, e -> {
+        // 5秒后自动消失
+        Timer timer = new Timer(5000, e -> {
             bubble.dispose();
             if (currentBubble == bubble) {
                 currentBubble = null;

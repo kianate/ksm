@@ -142,8 +142,8 @@ public class ChatBubble {
         mainPanel.setBackground(COLOR_BG_WHITE);
         mainPanel.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
 
-        // 顶部栏：关闭按钮在右上角（Ant Design 风格 - 灰色小图标）
-        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        // 顶部栏：关闭按钮在左上角（Ant Design 风格 - 灰色小图标）
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         topBar.setOpaque(false);
 
         // Ant Design 风格的关闭按钮：灰色 × 悬停变深色
