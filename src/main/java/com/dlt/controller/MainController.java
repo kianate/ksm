@@ -33,8 +33,8 @@ public class MainController {
     private Image petImage; // 当前显示的图片
     private BufferedImage image001; // 001.png原始图片
     private BufferedImage image002; // 002.jpg原始图片
-    private int petWidth = 180;
-    private int petHeight = 180;
+    private int petWidth = 250;
+    private int petHeight = 250;
     private boolean petVisible = true;
     // 拖动相关
     private Point dragStartPoint;
@@ -111,14 +111,8 @@ public class MainController {
             }
             image002 = ImageIO.read(is2);
             
-            // 使用两张图片中较大的尺寸作为窗口大小
-            petWidth = Math.max(image001.getWidth(), image002.getWidth());
-            petHeight = Math.max(image001.getHeight(), image002.getHeight());
+            // 窗口固定250x250，两张图片都绘制为窗口大小
             petWindow.setSize(petWidth, petHeight);
-            
-            // 将两张图片都缩放到窗口大小，确保绘制时直接填满窗口
-            image001 = scaleImage(image001, petWidth, petHeight);
-            image002 = scaleImage(image002, petWidth, petHeight);
             
             // 初始使用001.png
             petImage = image001;
@@ -554,7 +548,11 @@ public class MainController {
         }
         systemTray = SystemTray.getSystemTray();
 
-        // 使用001.png作为托盘图标（直接使用原始图片，系统会自动缩放）
+        // 获取系统推荐的托盘图标尺寸（高DPI下可能大于16）
+        Dimension trayIconSize = systemTray.getTrayIconSize();
+        int traySize = Math.max(trayIconSize.width, trayIconSize.height);
+        System.out.println("系统托盘图标推荐尺寸: " + traySize + "x" + traySize);
+
         BufferedImage trayImage = null;
         try {
             java.io.InputStream is = getClass().getResourceAsStream("/resource/001.png");
@@ -562,21 +560,20 @@ public class MainController {
                 throw new Exception("找不到图片资源: /resource/001.png");
             }
             BufferedImage original = ImageIO.read(is);
-            int traySize = 16;
             trayImage = scaleImage(original, traySize, traySize);
         } catch (Exception e) {
             System.err.println("加载托盘图标失败: " + e.getMessage());
             // 回退：创建一个简单的彩色图标
-            trayImage = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+            trayImage = new BufferedImage(traySize, traySize, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2d = trayImage.createGraphics();
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2d.setColor(new Color(255, 182, 193));
-            g2d.fillOval(0, 0, 16, 16);
+            g2d.fillOval(0, 0, traySize, traySize);
             g2d.dispose();
         }
 
         trayIcon = new TrayIcon(trayImage, "KSM 桌面宠物");
-        trayIcon.setImageAutoSize(false); // 禁用系统自动缩放，保持 BICUBIC 效果
+        trayIcon.setImageAutoSize(true); // 允许系统在需要时自动适配
 
         // 托盘右键菜单
         java.awt.PopupMenu trayMenu = new java.awt.PopupMenu();
