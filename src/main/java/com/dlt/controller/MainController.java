@@ -30,7 +30,9 @@ public class MainController {
 
     private JWindow petWindow;
     private JLabel petLabel;
-    private Image petImage;
+    private Image petImage; // 当前显示的图片
+    private BufferedImage image001; // 001.png原始图片
+    private BufferedImage image002; // 002.jpg原始图片
     private int petWidth = 180;
     private int petHeight = 180;
     private boolean petVisible = true;
@@ -51,6 +53,10 @@ public class MainController {
     // 跳跃动画相关
     private boolean isJumping = false;
     private Timer jumpTimer;
+    // 转身动画相关
+    private boolean isTurning = false;
+    private double currentAngle = 0; // 当前旋转角度（弧度）
+    private Timer turnTimer;
     // 系统托盘
     private SystemTray systemTray;
     private TrayIcon trayIcon;
@@ -89,30 +95,66 @@ public class MainController {
         petWindow.setAlwaysOnTop(true);
         petWindow.setBackground(new Color(0, 0, 0, 0));
         petWindow.setSize(petWidth, petHeight);
-        // 加载宠物图片
+        // 加载宠物图片（直接使用PNG原始尺寸，不缩放）
         try {
-            //用 File 加载的是文件系统路径，而不是 classpath 资源路径。应该用 getClass().getResourceAsStream() 来加载打包在 jar 里的资源。
-            java.io.InputStream is = getClass().getResourceAsStream("/resource/001.png");
-            if (is == null) {
-                throw new Exception("找不到图片资源: /com/dlt/img/001.png");
+            // 加载001.png
+            java.io.InputStream is1 = getClass().getResourceAsStream("/resource/001.png");
+            if (is1 == null) {
+                throw new Exception("找不到图片资源: /resource/001.png");
             }
-            BufferedImage img = ImageIO.read(is);
-            petImage = scaleImage(img, petWidth, petHeight);
+            image001 = ImageIO.read(is1);
+            
+            // 加载002.png
+            java.io.InputStream is2 = getClass().getResourceAsStream("/resource/002.png");
+            if (is2 == null) {
+                throw new Exception("找不到图片资源: /resource/002.png");
+            }
+            image002 = ImageIO.read(is2);
+            
+            // 使用两张图片中较大的尺寸作为窗口大小
+            petWidth = Math.max(image001.getWidth(), image002.getWidth());
+            petHeight = Math.max(image001.getHeight(), image002.getHeight());
+            petWindow.setSize(petWidth, petHeight);
+            
+            // 将两张图片都缩放到窗口大小，确保绘制时直接填满窗口
+            image001 = scaleImage(image001, petWidth, petHeight);
+            image002 = scaleImage(image002, petWidth, petHeight);
+            
+            // 初始使用001.png
+            petImage = image001;
         } catch (Exception e) {
             System.err.println("加载宠物图片失败: " + e.getMessage());
         }
 
-        // 宠物标签
+        // 宠物标签 - 支持3D转身效果（通过X轴缩放模拟）
         petLabel = new JLabel() {
             @Override
-            //g.drawImage(petImage, 0, 0, getWidth(), getHeight(), this);
-            //直接用原始 Graphics 对象绘制,没有任何渲染提示，Java 使用默认的最近邻插值（Nearest Neighbor），缩放时像素直接"拉伸"，边缘锯齿明显、图像模糊
-            //Bicubic（双三次插值），取周围 16 个像素加权计算，边缘平滑清晰
             protected void paintComponent(Graphics g) {
-                super.paintComponent(g);//保留 super.paintComponent(g)：是 Swing 重写 paintComponent 的标准做法，保证未来如果给 JLabel 加了文字、图标、或改成 opaque，不会出 bu
+                // 不调用super.paintComponent，避免Windows LAF绘制默认背景矩形
                 Graphics2D g2d = (Graphics2D) g.create();
+                
+                // 设置高质量渲染
                 g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
                 g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                if (currentAngle != 0) {
+                    // 模拟3D转身：通过X轴缩放实现
+                    int centerX = getWidth() / 2;
+                    int centerY = getHeight() / 2;
+                    
+                    // 计算X轴缩放比例：cos(angle)
+                    // 0° -> 1.0, 90° -> 0.0, 180° -> -1.0
+                    double scaleX = Math.cos(currentAngle);
+                    
+                    // 平移到中心点
+                    g2d.translate(centerX, centerY);
+                    // X轴缩放（负值会自动水平翻转）
+                    g2d.scale(scaleX, 1.0);
+                    // 平移回原点
+                    g2d.translate(-centerX, -centerY);
+                }
+                
                 g2d.drawImage(petImage, 0, 0, getWidth(), getHeight(), this);
                 g2d.dispose();
             }
@@ -203,6 +245,16 @@ public class MainController {
         if (currentBubble != null) {
             currentBubble.dispose();
         }
+        
+        // 如果正在转身，停止转身动画并恢复001.png
+        if (isTurning) {
+            stopTurnAnimation();
+        }
+        // 直接切换回001.png
+        petImage = image001;
+        currentAngle = 0;
+        petLabel.repaint();
+        
         // 触发跳跃动画
         jumpPet();
 
@@ -226,13 +278,15 @@ public class MainController {
     private void handleUserMessage(String message) {
         // 先显示思考中的提示（短暂自动消失）
         showTimedBubble("思考中...");
+        
         // 异步调用AI
         CompletableFuture<String> future = aiService.chatAsync(message);
         future.thenAccept(reply -> {
             SwingUtilities.invokeLater(() -> {
                 String displayText = parseDisplayText(reply);
                 if (displayText != null && !displayText.isEmpty()) {
-                    showPersistentBubble(displayText);
+                    // 收到AI回复后，触发表情切换动画
+                    turnAndSwitchExpression(displayText);
                 } else {
                     currentBubble.dispose();
                 }
@@ -361,14 +415,84 @@ public class MainController {
      * 高质量缩放图片（避免 getScaledInstance 导致的模糊）
      */
     private BufferedImage scaleImage(BufferedImage original, int targetWidth, int targetHeight) {
+        // 创建目标图像
         BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = scaled.createGraphics();
+        
+        // 设置最高质量的渲染参数
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE);
+        g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        
+        // 绘制图片
         g2d.drawImage(original, 0, 0, targetWidth, targetHeight, null);
         g2d.dispose();
+        
         return scaled;
+    }
+
+    /**
+     * 转身并切换表情动画（模拟3D转身效果）
+     * 从0度旋转到90度（变成一条线），切换图片，然后继续旋转到180度
+     */
+    private void turnAndSwitchExpression(String displayText) {
+        if (isTurning) {
+            return; // 正在转身中，不重复触发
+        }
+        isTurning = true;
+        currentAngle = 0;
+        
+        final int totalDuration = 400; // 总时长（毫秒）
+        final int frameDelay = 15; // 帧间隔（毫秒）
+        final int totalFrames = totalDuration / frameDelay;
+        final double anglePerFrame = Math.PI / totalFrames; // 每帧旋转角度（从0到π）
+        
+        // 先显示AI回复的气泡
+        showPersistentBubble(displayText);
+        
+        turnTimer = new Timer(frameDelay, null);
+        turnTimer.addActionListener(e -> {
+            currentAngle += anglePerFrame;
+            
+            // 当旋转到90度（π/2）时，切换图片（直接使用002.png原始图片）
+            if (currentAngle >= Math.PI / 2 && currentAngle < Math.PI / 2 + anglePerFrame) {
+                petImage = image002; // 直接使用002.png原始图片
+            }
+            
+            petLabel.repaint();
+            
+            // 更新窗口形状，裁剪掉透明区域，避免转身时出现矩形
+            double scaleX = Math.abs(Math.cos(currentAngle));
+            int visibleWidth = Math.max(1, (int)(petWidth * scaleX));
+            int shapeX = (petWidth - visibleWidth) / 2;
+            petWindow.setShape(new java.awt.Rectangle(shapeX, 0, visibleWidth, petHeight));
+            
+            // 完成旋转（180度）
+            if (currentAngle >= Math.PI) {
+                currentAngle = 0; // 重置角度为0，此时显示的是002.jpg的正面
+                petWindow.setShape(null); // 恢复正常矩形
+                turnTimer.stop();
+                isTurning = false;
+                petLabel.repaint();
+            }
+        });
+        turnTimer.start();
+    }
+    
+    /**
+     * 停止转身动画
+     */
+    private void stopTurnAnimation() {
+        if (turnTimer != null && turnTimer.isRunning()) {
+            turnTimer.stop();
+        }
+        isTurning = false;
+        currentAngle = 0;
+        petWindow.setShape(null); // 恢复正常矩形
     }
 
     /**
@@ -430,7 +554,7 @@ public class MainController {
         }
         systemTray = SystemTray.getSystemTray();
 
-        // 使用 Graphics2D + BICUBIC 高质量缩放托盘图标
+        // 使用001.png作为托盘图标（直接使用原始图片，系统会自动缩放）
         BufferedImage trayImage = null;
         try {
             java.io.InputStream is = getClass().getResourceAsStream("/resource/001.png");
